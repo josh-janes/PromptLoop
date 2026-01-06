@@ -1,0 +1,25 @@
+# PromptLoop - Production Docker Compose
+# Run with: docker compose -f docker-compose.prod.yml up --build
+# Or use the run script: ./run.sh
+
+services:
+  # All-in-one production build
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8080:8080" # Main app (frontend + API proxy)
+      - "3000:3000" # Rails API (optional direct access)
+    environment:
+      RAILS_ENV: production
+      NODE_ENV: production
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-development_secret_key_base_change_in_production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development_jwt_secret_change_in_production}
+      DATABASE_URL: sqlite3:///app/data/production.sqlite3
+    volumes:
+      - app_data:/app/data
+    # GPU support removed as AI is now on frontend
+
+volumes:
+  app_data:

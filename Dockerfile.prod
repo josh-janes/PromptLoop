@@ -1,0 +1,145 @@
+# PromptLoop - Production All-in-One Dockerfile
+# Builds frontend and backend into a single container
+# Managed by supervisord for process orchestration
+
+# ============================================
+# Stage 1: Build Frontend
+# ============================================
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy package files
+COPY frontend/package*.json ./
+
+# Install ALL dependencies (including devDependencies for build)
+RUN rm -rf node_modules package-lock.json && \
+    npm install
+
+# Build vars
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=$VITE_API_URL
+
+COPY frontend/ ./
+RUN npm run build
+
+# ============================================
+# Stage 2: Production Runtime
+# ============================================
+FROM ruby:3.2-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libyaml-dev \
+    libffi-dev \
+    zlib1g-dev \
+    nginx \
+    supervisor \
+    curl \
+    ffmpeg \
+    sqlite3 \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ============================================
+# Install Ruby/Rails dependencies
+# ============================================
+COPY web-service/Gemfile web-service/Gemfile.lock* /app/web-service/
+WORKDIR /app/web-service
+
+# Create Gemfile.lock if it doesn't exist and install gems
+RUN bundle config set --local without 'development test' && \
+    bundle install --jobs 4 --retry 3
+
+# Copy Rails app
+COPY web-service/ /app/web-service/
+
+# Fix line endings for Windows compatibility and ensure executable
+RUN sed -i 's/\r$//' /app/web-service/bin/* && \
+    chmod +x /app/web-service/bin/*
+
+# ============================================
+# Copy built frontend
+# ============================================
+COPY --from=frontend-builder /frontend/dist /app/frontend/dist
+
+# ============================================
+# Configure Nginx
+# ============================================
+RUN rm /etc/nginx/sites-enabled/default
+
+COPY <<'EOF' /etc/nginx/sites-enabled/promptloop
+server {
+    listen 8080;
+    server_name localhost;
+    
+    # Serve frontend static files
+    root /app/frontend/dist;
+    index index.html;
+    
+    # Frontend routes - SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # API proxy to Rails
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+
+# ============================================
+# Configure Supervisord
+# ============================================
+COPY <<'EOF' /etc/supervisor/conf.d/promptloop.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:rails]
+command=bin/rails server -b 0.0.0.0 -p 3000
+directory=/app/web-service
+environment=RAILS_ENV="%(ENV_RAILS_ENV)s",DATABASE_URL="%(ENV_DATABASE_URL)s",SECRET_KEY_BASE="%(ENV_SECRET_KEY_BASE)s"
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+EOF
+
+# Create data directory
+RUN mkdir -p /app/data /var/log/supervisor
+
+# Expose ports
+EXPOSE 8080 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Start supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

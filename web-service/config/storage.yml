@@ -1,0 +1,20 @@
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>
+
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+google:
+  service: GCS
+  project: your_project
+  credentials: <%= Rails.root.join("path/to/gcs.keyfile") %>
+  bucket: your_own_bucket
+
+amazon:
+  service: S3
+  access_key_id: ""
+  secret_access_key: ""
+  region: us-east-1
+  bucket: your_own_bucket

@@ -1,16 +1,34 @@
-# React + Vite
+# PromptLoop - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React-based frontend for the PromptLoop AI music looper.
 
-Currently, two official plugins are available:
+## Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **AudioWorklet Looping**: Uses a high-performance AudioWorklet (`looper-processor.js`) for sample-accurate looping.
+- **Transformers.js Integration**: Runs the `Xenova/musicgen-small` model directly in a Web Worker.
+- **Multimodal Generation**: Supports audio-guided generation by mixing active pads into the AI prompt.
+- **Keyboard Navigation**: Fully accessible via keyboard (Tab to navigate, Space/Enter to toggle).
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React 18
+- **Build Tool**: Vite
+- **State**: Zustand
+- **Audio**: Web Audio API + Transformers.js
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+## Structure
+
+- `src/audio/`: AudioContext management and synth utilities.
+- `src/services/aiGenerator.js`: Proxy for the AI Worker.
+- `src/services/aiGenerator.worker.js`: Heavy-lifting AI computation.
+- `public/audio/looper-processor.js`: The real-time audio thread.

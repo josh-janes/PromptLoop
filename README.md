@@ -2,6 +2,8 @@
 
 AI-powered looping pedal and backing track generator for the web.
 
+![PromptLoop Screenshot](screenshot.png)
+
 ## Quick Start
 
 ### One-Command Docker Run
@@ -33,29 +35,25 @@ docker compose up --build
 
 ## Architecture
 
-|-----------------------------------------------------|
 | Service          | Port | Description               |
 |------------------|------|---------------------------|
 | Frontend (Nginx) | 8080 | React SPA + API proxy     |
 | Rails API        | 3000 | Backend REST API          |
-| AI Service       | 8000 | MusicGen audio generation |
-|-----------------------------------------------------|
+
+## Technologies
+
+- **Frontend**: React, Vite, Zustand (State Management)
+- **Audio Processing**: Web Audio API, AudioWorklet (Low-latency looping)
+- **AI/ML**: [Transformers.js](https://huggingface.co/docs/transformers.js) (MusicGen-small running in a Web Worker)
+- **Backend**: Ruby on Rails (API mode)
+- **Infrastructure**: Docker, Nginx, Supervisord
 
 ## Features
 
-- 🎹 **16-Pad Looper** - Record, upload, or generate loops
-- 🤖 **AI Backing Tracks** - Generate music from text prompts
-- 🎙️ **Recording** - Capture audio from your microphone
-- 🎨 **Reactive UI** - Colors shift with your music
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-```
-SECRET_KEY_BASE=your_secret_key
-JWT_SECRET_KEY=your_jwt_secret
-```
+- � **16-Pad Looper** - Zero-latency looping powered by custom AudioWorklet
+- 🤖 **Client-Side AI** - Generate backing tracks directly in your browser (no GPU server required!)
+- 🎙️ **Multimodal Generation** - Use existing pads as context for new AI generations
+- 🎨 **Modern Interface** - Responsive design with keyboard accessible controls
 
 ## License
 

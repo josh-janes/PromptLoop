@@ -15,6 +15,7 @@ rails server -p 3000
 ```
 
 ## Architecture
+
 ```
 app/
 ├── controllers/
@@ -26,8 +27,8 @@ app/
 │   ├── user.rb
 │   ├── project.rb
 │   └── track.rb
-├── services/
-│   └── ai_generator_service.rb
-└── jobs/
-    └── generate_audio_job.rb
+└── services/
+    └── jwt_service.rb
 ```
+
+The AI generation is handled client-side in the frontend. This service is purely for authentication and persisting projects/tracks.

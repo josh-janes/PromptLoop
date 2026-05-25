@@ -141,15 +141,21 @@ class AudioContextManager {
      * @param {Array} pads - Array of pad objects from store
      * @returns {AudioBuffer|null} - Mono mix of all tracks or null
      */
-    getMixAudioBuffer(pads) {
+    getMixAudioBuffer(pads, excludeIndex = -1) {
         if (!this.context) return null;
 
-        // Filter active pads with buffers
-        const activePads = pads.filter(p =>
+        let activePads = pads.filter((p, i) =>
+            i !== excludeIndex &&
             p.status === 'ready' &&
             p.buffer &&
             !p.muted
         );
+
+        // Handle solo logic
+        const soloPads = activePads.filter(p => p.solo);
+        if (soloPads.length > 0) {
+            activePads = soloPads;
+        }
 
         if (activePads.length === 0) return null;
 
@@ -158,9 +164,9 @@ class AudioContextManager {
             Math.max(max, p.buffer.duration), 0
         );
 
-        // Limit to reasonable context length (e.g. 30s) for AI to avoid OOM
-        // MusicGen max is typically 30s
-        const duration = Math.min(maxDuration, 30);
+        // Limit to 8s context for AI to avoid massive encoding time on CPU
+        // MusicGen style guidance only needs a few bars.
+        const duration = Math.min(maxDuration, 8);
         const length = Math.floor(duration * this.context.sampleRate);
 
         // Create mono buffer for mix
@@ -171,16 +177,16 @@ class AudioContextManager {
         );
         const outputData = mixBuffer.getChannelData(0);
 
-        // Sum tracks
+        // Sum tracks (with looping)
         activePads.forEach(pad => {
             const buffer = pad.buffer;
-            const inputData = buffer.getChannelData(0); // Assume mono or take left channel
+            const inputData = buffer.getChannelData(0);
+            const inputLength = inputData.length;
+            const volume = pad.volume || 1.0;
 
-            // Gain adjustment (simple 1/N to prevent clipping, or use pad volume)
-            const volume = pad.volume;
-
-            for (let i = 0; i < length && i < inputData.length; i++) {
-                outputData[i] += inputData[i] * volume;
+            for (let i = 0; i < length; i++) {
+                // Loop the input data
+                outputData[i] += inputData[i % inputLength] * volume;
             }
         });
 

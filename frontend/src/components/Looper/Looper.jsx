@@ -1,204 +1,139 @@
-/**
- * Looper Component - The main 16-pad loop interface
- */
-
 import { useState, useEffect, useCallback } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 import { audioContext } from '../../audio/AudioContextManager';
-import { createPianoSample, createDrumLoop } from '../../audio/synthUtils';
+import { createChordPad, createBassLine, createDrumLoop } from '../../audio/synthUtils';
+import { detectKey, ALL_KEYS } from '../../audio/keyDetector';
 
 import { RecordingModal } from '../RecordingModal';
-import { AuthModal } from '../Auth';
-import { ProjectsModal } from '../ProjectsModal';
-import useAuthStore from '../../stores/authStore';
 import Pad from './Pad';
 import TransportControls from './TransportControls';
 import './Looper.css';
 
 function Looper() {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [mode, setMode] = useState('play'); // 'play', 'record', 'generate'
-    const [generatingPads, setGeneratingPads] = useState({}); // { [index]: { progress: 0 } }
+    const [isInitialized, setIsInitialized]       = useState(false);
+    const [generatingPads, setGeneratingPads]     = useState({});
     const [showRecordingModal, setShowRecordingModal] = useState(false);
     const [recordingTargetPad, setRecordingTargetPad] = useState(null);
-    const [showAuthModal, setShowAuthModal] = useState(false);
-    const [showProjectsModal, setShowProjectsModal] = useState(false);
+    const [isIsolated, setIsIsolated]             = useState(true);
+    const [key, setKey]                           = useState('C Major');
 
-    const { user, isAuthenticated, logout } = useAuthStore();
+    useEffect(() => { setIsIsolated(window.crossOriginIsolated); }, []);
 
-    const {
-        pads,
-        isPlaying,
-        bpm,
-        currentStep,
-        progress,
-        setLooperNode,
-        loadPad,
-        play,
-        stop,
-        setBpm
-    } = useAudioStore();
+    const { pads, isPlaying, bpm, progress, setLooperNode, loadPad, setSuggestedPrompt, play, stop, setBpm } = useAudioStore();
 
-    // Initialize audio on first user interaction
+    // Auto-detect key whenever the active mix changes
+    const readyCount = pads.filter(p => p.status === 'ready').length;
+    const mutedCount = pads.filter(p => p.muted).length;
+    useEffect(() => {
+        if (!isInitialized) return;
+        const mix = audioContext.getMixAudioBuffer(pads);
+        if (!mix) return;
+        setKey(detectKey(mix.getChannelData(0), audioContext.getContext().sampleRate));
+    }, [readyCount, mutedCount, isInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const initializeAudio = useCallback(async () => {
         if (isInitialized) return;
-
         try {
             const ctx = await audioContext.initialize();
-
-            // Create the looper worklet node
             const looperNode = new AudioWorkletNode(ctx, 'looper-processor');
             looperNode.connect(audioContext.getMasterGain());
-
-            // Listen for messages from the worklet
-            looperNode.port.onmessage = (event) => {
-                const { type, position, total } = event.data;
+            looperNode.port.onmessage = ({ data: { type, position, total } }) => {
                 if (type === 'position') {
-                    // Convert position to step (assuming 16 steps per loop)
-                    const progress = position / total;
-                    const step = Math.floor(progress * 16) % 16;
-                    useAudioStore.getState().updateStep(step, progress);
+                    const p = position / total;
+                    useAudioStore.getState().updateStep(Math.floor(p * 16) % 16, p);
                 }
             };
-
-            // Set initial BPM
             looperNode.port.postMessage({ type: 'setBpm', data: { bpm } });
-
             setLooperNode(looperNode);
             setIsInitialized(true);
-
-            // Auto-load demo if desired, or just waiting for user
-        } catch (error) {
-            console.error('Failed to initialize audio:', error);
-        }
+        } catch (e) { console.error('Audio init failed:', e); }
     }, [isInitialized, bpm, setLooperNode]);
 
     const handleLoadDemo = async (e) => {
         e.stopPropagation();
         if (!isInitialized) await initializeAudio();
+        const bars = 2;
+        const dur  = (60 / bpm) * 4 * bars;
+        const [drums, chord, bass] = await Promise.all([
+            createDrumLoop(bpm, bars),
+            createChordPad(dur, ['C3', 'E3', 'G3', 'B3']),
+            createBassLine(bpm, bars),
+        ]);
+        loadPad(0, drums, { name: 'Drums',     sourceType: 'upload' });
+        loadPad(1, chord, { name: 'Chord Pad', sourceType: 'upload' });
+        loadPad(4, bass,  { name: 'Bass Line', sourceType: 'upload' });
 
-        const ctx = audioContext.getContext();
-
-        // Load Drums on Pad 0
-        const drumBuffer = await createDrumLoop(bpm, 2); // 2 bars
-        loadPad(0, drumBuffer, { name: 'Demo Drums', sourceType: 'upload' });
-
-        // Load Piano Chords on Pad 1
-        const pianoBuffer = await createPianoSample(4.0, ['C3', 'E3', 'G3', 'B3']); // Cmaj7
-        loadPad(1, pianoBuffer, { name: 'Piano Cmaj7', sourceType: 'upload' });
-
-        // Load Bass on Pad 4
-        const bassBuffer = await createPianoSample(4.0, ['C2']); // C Bass
-        loadPad(4, bassBuffer, { name: 'Bass C', sourceType: 'upload' });
+        // Pre-seed empty pads with prompts covering different musical roles
+        const suggestions = {
+            2:  'warm Rhodes electric piano, jazz comping, lo-fi, mellow',
+            3:  'tenor saxophone melody, soulful jazz, expressive, breathy',
+            5:  'funky clavinet, tight percussive rhythm, groove',
+            6:  'lush string pad, sustained, ambient, cinematic',
+            7:  'pulsing synth arpeggio, bright electronic, driving 16th notes',
+            8:  'fat Moog lead synth, warm analog, vintage, melodic',
+            9:  'shaker and tambourine, tight rhythmic groove, percussive',
+            10: 'vintage Hammond B3 organ, gospel chord comping, warm drawbar',
+            11: 'clean Fender guitar fingerpicking, gentle, ambient',
+            12: 'ethereal reverb guitar, shoegaze, washed, atmospheric',
+            13: 'deep 808 sub bass, punchy electronic, low end',
+            14: 'orchestral cello section, cinematic, rich, dramatic pulse',
+            15: 'vibraphone melody, jazz, shimmering, delicate',
+        };
+        Object.entries(suggestions).forEach(([i, prompt]) => setSuggestedPrompt(Number(i), prompt));
     };
 
-    // Handle pad click in record mode
     const handlePadRecordClick = useCallback((padIndex) => {
         setRecordingTargetPad(padIndex);
         setShowRecordingModal(true);
     }, []);
 
-    // Handle in-place generation
     const handleGenerate = useCallback(async (padIndex, prompt) => {
-        // Set generating state
-        setGeneratingPads(prev => ({
-            ...prev,
-            [padIndex]: { progress: 0 }
-        }));
-
+        setGeneratingPads(prev => ({ ...prev, [padIndex]: { progress: 0, status: 'Initializing...' } }));
         try {
-            // Calculate duration based on BPM (e.g. 2 bars) or default 4s
-            // For now default to 4s to match previous logic
-            const duration = 4.0;
-
-            // Note: aiGenerator now supports progress callbacks, but we need to hook it up per-call
-            // Since our service is singleton, we might only get global progress. 
-            // For now, let's simulate or specific implementation.
-            // *Wait*, aiGenerator is singleton. If we want parallel generation, we need to be careful.
-            // But JS single thread means we can only generate one at a time comfortably anyway.
-
-            const result = await import('../../services/aiGenerator').then(({ aiGenerator }) => {
-                // Get reference mix from other pads
-                const inputAudioBuffer = audioContext.getMixAudioBuffer(pads);
-                const inputAudio = inputAudioBuffer ? inputAudioBuffer.getChannelData(0) : null;
-                const inputSampleRate = audioContext.getContext()?.sampleRate || 44100;
-
-                return aiGenerator.generate(prompt, {
-                    bpm,
-                    durationSeconds: duration,
-                    inputAudio,
-                    inputSampleRate,
-                    onProgress: (p) => {
-                        setGeneratingPads(prev => ({
-                            ...prev,
-                            [padIndex]: { progress: p }
-                        }));
-                    }
-                });
+            const duration = (60 / bpm) * 8;
+            const { aiGenerator } = await import('../../services/aiGenerator');
+            const result = await aiGenerator.generate(prompt, {
+                bpm, durationSeconds: duration, key,
+                onProgress: (p) => setGeneratingPads(prev =>
+                    prev[padIndex] ? { ...prev, [padIndex]: { ...prev[padIndex], progress: p } } : prev),
+                onStatus: (s) => setGeneratingPads(prev =>
+                    prev[padIndex] ? { ...prev, [padIndex]: { ...prev[padIndex], status: s } } : prev),
             });
-
-            // Load the result
-            loadPad(padIndex, result, {
-                name: prompt,
-                sourceType: 'ai_generation',
-                promptHistory: { prompt }
-            });
-
-        } catch (error) {
-            console.error("Generation failed", error);
-            // Optionally show error on pad
+            loadPad(padIndex, result, { name: prompt, sourceType: 'ai_generation', promptHistory: { prompt } });
+        } catch (e) {
+            console.error('Generation failed', e);
         } finally {
-            // Clear generating state
-            setGeneratingPads(prev => {
-                const next = { ...prev };
-                delete next[padIndex];
-                return next;
-            });
-            // Reset mode to play after generation starts/completes? 
-            // User might want to generate multiple. Keep in generate mode.
+            setGeneratingPads(prev => { const n = { ...prev }; delete n[padIndex]; return n; });
         }
-    }, [bpm, loadPad]);
+    }, [bpm, key, loadPad, pads]);
 
-    // Handle recorded audio
     const handleRecordingComplete = useCallback((result) => {
-        if (recordingTargetPad !== null) {
-            loadPad(recordingTargetPad, result.buffer, {
-                name: result.name,
-                sourceType: result.sourceType
-            });
-        }
+        if (recordingTargetPad !== null)
+            loadPad(recordingTargetPad, result.buffer, { name: result.name, sourceType: result.sourceType });
         setShowRecordingModal(false);
         setRecordingTargetPad(null);
     }, [recordingTargetPad, loadPad]);
 
-    // Keyboard shortcuts
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.code === 'Space') {
-                // Ignore if user is typing in an input
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                    return;
-                }
-
+        const onKey = (e) => {
+            if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
-                if (isPlaying) {
-                    stop();
-                } else {
-                    play();
-                }
+                isPlaying ? stop() : play();
             }
         };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, [isPlaying, play, stop]);
+
+    const generatingEntries = Object.entries(generatingPads);
+    const activeGen = generatingEntries.length > 0 ? generatingEntries[0][1] : null;
 
     return (
         <div className="looper" onClick={initializeAudio}>
             {!isInitialized && (
                 <div className="looper__init-overlay">
                     <div className="looper__init-message">
-                        <h2>🎸 PromptLoop</h2>
+                        <h2>PromptLoop</h2>
                         <p>Click anywhere to start</p>
                     </div>
                 </div>
@@ -207,60 +142,37 @@ function Looper() {
             <header className="looper__header">
                 <h1 className="looper__title">PromptLoop</h1>
 
+                {!isIsolated && (
+                    <div className="looper__perf-warning" title="SharedArrayBuffer unavailable — WASM single-threaded">
+                        ⚠️ Low Perf
+                    </div>
+                )}
 
-
-                <button className="btn-text" onClick={handleLoadDemo} style={{ marginRight: 'auto', marginLeft: '20px' }}>
-                    🎵 Load Demo
+                <button className="btn-text" onClick={handleLoadDemo} style={{ marginLeft: 16, marginRight: 'auto' }}>
+                    Load Demo
                 </button>
-
-                <div className="looper__mode-selector">
-                    <button
-                        className={`mode-btn ${mode === 'play' ? 'active' : ''}`}
-                        onClick={() => setMode('play')}
-                    >
-                        Play
-                    </button>
-                    <button
-                        className={`mode-btn ${mode === 'record' ? 'active' : ''}`}
-                        onClick={() => setMode('record')}
-                    >
-                        Record
-                    </button>
-                    <button
-                        className={`mode-btn ${mode === 'generate' ? 'active' : ''}`}
-                        onClick={() => setMode('generate')}
-                    >
-                        ✨ Generate
-                    </button>
-                </div>
 
                 <div className="looper__bpm">
                     <label>BPM</label>
-                    <input
-                        type="number"
-                        value={bpm}
-                        onChange={(e) => setBpm(Number(e.target.value))}
-                        min="20"
-                        max="300"
-                    />
+                    <input type="number" value={bpm} min="20" max="300"
+                        onChange={(e) => setBpm(Number(e.target.value))} />
                 </div>
 
-                <div className="looper__auth">
-                    {isAuthenticated ? (
-                        <div className="auth-status">
-                            <button className="btn-primary-sm" onClick={() => setShowProjectsModal(true)}>
-                                📁 Projects
-                            </button>
-                            <span>{user?.email}</span>
-                            <button className="btn-text" onClick={logout}>Sign Out</button>
-                        </div>
-                    ) : (
-                        <button className="btn-primary-sm" onClick={() => setShowAuthModal(true)}>
-                            Log In
-                        </button>
-                    )}
+                <div className="looper__key">
+                    <label>Key</label>
+                    <select value={key} onChange={(e) => setKey(e.target.value)}>
+                        {ALL_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
                 </div>
             </header>
+
+            <div className="looper__global-progress">
+                <div
+                    className={`looper__global-progress-fill${activeGen ? ' looper__global-progress-fill--generating' : ''}`}
+                    style={{ width: activeGen ? `${activeGen.progress}%` : isPlaying ? `${progress * 100}%` : '0%' }}
+                />
+                {activeGen && <span className="looper__global-progress-label">{activeGen.status}</span>}
+            </div>
 
             <main className="looper__grid">
                 {pads.map((pad, index) => (
@@ -268,40 +180,20 @@ function Looper() {
                         key={index}
                         index={index}
                         pad={pad}
-                        isActive={currentStep === index && isPlaying}
-                        progress={isPlaying ? progress : 0}
-                        mode={mode}
                         onGenerate={handleGenerate}
                         onRecordClick={handlePadRecordClick}
                         isGenerating={!!generatingPads[index]}
-                        generationProgress={generatingPads[index]?.progress || 0}
+                        generationStatus={generatingPads[index]?.status || ''}
                     />
                 ))}
             </main>
 
             <TransportControls />
 
-            {/* GenerateModal removed - In-place generation used */}
-
-            {/* Recording Modal */}
             <RecordingModal
                 isOpen={showRecordingModal}
-                onClose={() => {
-                    setShowRecordingModal(false);
-                    setRecordingTargetPad(null);
-                }}
+                onClose={() => { setShowRecordingModal(false); setRecordingTargetPad(null); }}
                 onRecordingComplete={handleRecordingComplete}
-            />
-
-            {/* Auth Modal */}
-            <AuthModal
-                isOpen={showAuthModal}
-                onClose={() => setShowAuthModal(false)}
-            />
-            {/* ProjectsModal */}
-            <ProjectsModal
-                isOpen={showProjectsModal}
-                onClose={() => setShowProjectsModal(false)}
             />
         </div>
     );

@@ -1,0 +1,4 @@
+# Additional deps on top of ACE-Step's own environment.
+# Run: uv pip install -r requirements.txt  (inside ~/dev/ACE-Step-1.5)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0

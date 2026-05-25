@@ -1,276 +1,266 @@
-/**
- * Pad Component Styles
- * Individual pad styling with states and animations
- */
-
 .pad {
-    aspect-ratio: 1;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--black);
+  border: 1px solid var(--green-dark);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.1s;
 }
 
 .pad:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
+  border-color: var(--green-dim);
 }
 
 .pad:focus-visible {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
-    transform: translateY(-2px);
+  outline: 1px solid var(--green);
+  outline-offset: -1px;
 }
 
-/* State variations */
-.pad--empty {
-    border-style: dashed;
-}
+/* States */
+.pad--empty  { border-style: dashed; }
+.pad--loading { animation: dosLoad 0.8s step-end infinite; }
+.pad--ready  { border-color: var(--green-dim); }
+.pad--muted  { opacity: 0.35; }
+.pad--solo   { border-color: var(--green); box-shadow: 0 0 8px rgba(0, 255, 65, 0.3); }
 
-.pad--loading {
-    animation: padPulse 2s ease-in-out infinite;
-    border-color: #667eea;
-}
-
-.pad--ready {
-    background: rgba(102, 126, 234, 0.05);
-    border-color: rgba(102, 126, 234, 0.2);
-}
-
-.pad--muted {
-    opacity: 0.5;
-    background: rgba(0, 0, 0, 0.2);
-}
-
-.pad--solo {
-    border-color: #f59e0b;
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
-}
-
-/* Content */
+/* Content fills the pad, column layout */
 .pad__content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    width: 100%;
-    height: 100%;
-    justify-content: center;
-    z-index: 20;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 5px 4px;
+  min-height: 0;
 }
 
-.pad__placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    color: #555;
+/* Identity row */
+.pad__identity {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .pad__index {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #444;
-}
-
-.pad__hint {
-    font-size: 0.7rem;
-    color: #666;
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--green-dim);
+  letter-spacing: 0.05em;
 }
 
 .pad__name {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #fff;
-    text-align: center;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 4px;
+  font-size: 1rem;
+  color: var(--green);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80%;
+  letter-spacing: 0.05em;
 }
 
-/* Generate Input UI */
-.pad__generate-input {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    padding: 0 4px;
+.pad__source-badge {
+  font-size: 0.85rem;
+  color: var(--green-dim);
+  flex-shrink: 0;
 }
 
-.pad__generate-input input {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    color: white;
-    padding: 4px 8px;
-    font-size: 0.8rem;
-    width: 100%;
-    text-align: center;
-}
-
-.pad__generate-input input:focus {
-    outline: none;
-    border-color: #667eea;
-}
-
-.pad__generate-input button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    border-radius: 4px;
-    color: white;
-    font-size: 0.75rem;
-    padding: 4px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.pad__generate-input button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Generation Progress */
-.pad__generating {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.pad__status-text {
-    font-size: 0.75rem;
-    color: #667eea;
-    animation: blink 1.5s infinite;
-}
-
-.pad__gen-progress-bar {
-    width: 80%;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.pad__gen-progress-fill {
-    height: 100%;
-    background: #667eea;
-    transition: width 0.3s ease;
-}
-
-/* Controls */
+/* Playback controls */
 .pad__controls {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
 .pad__btn {
-    min-width: 24px;
-    height: 24px;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    color: #888;
-    font-size: 0.65rem;
-    font-weight: 700;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    padding: 0 6px;
+  min-width: 28px;
+  height: 22px;
+  border: 1px solid var(--green-dark);
+  background: var(--black);
+  color: var(--green-dim);
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0 5px;
+  letter-spacing: 0.05em;
+  transition: all 0.1s;
 }
 
-.pad__btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
+.pad__btn:hover       { background: var(--green-dim); color: var(--black); border-color: var(--green-dim); }
+.pad__btn.active      { background: var(--green); color: var(--black); border-color: var(--green); }
+.pad__btn--clear:hover { background: #ff4444; color: var(--black); border-color: #ff4444; }
+
+/* Actions bar — always at the bottom */
+.pad__actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  flex-shrink: 0;
 }
 
-.pad__btn.active {
-    background: #667eea;
-    color: #fff;
+.pad__btn-rec {
+  flex-shrink: 0;
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--green-dark);
+  background: var(--black);
+  color: var(--green-dim);
+  cursor: pointer;
+  font-family: 'VT323', monospace;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s;
+}
+.pad__btn-rec:hover { background: #ff4444; color: var(--black); border-color: #ff4444; }
+
+.pad__prompt-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  background: var(--black);
+  border: 1px solid var(--green-dark);
+  color: var(--green);
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+  padding: 0 4px;
+  text-align: left;
+  letter-spacing: 0.03em;
+}
+.pad__prompt-input::placeholder { color: var(--green-dark); }
+.pad__prompt-input:focus {
+  outline: none;
+  border-color: var(--green);
 }
 
-.pad__btn--clear:hover {
-    background: #ef4444;
+.pad__btn-gen, .pad__btn-save {
+  flex-shrink: 0;
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--green-dark);
+  background: var(--black);
+  cursor: pointer;
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s;
+  color: var(--green-dim);
 }
 
-/* Source type badge */
-.pad__source {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    font-size: 0.75rem;
-    opacity: 0.7;
+.pad__btn-gen:hover:not(:disabled) { background: var(--green); color: var(--black); border-color: var(--green); }
+.pad__btn-gen:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.pad__btn-save:hover { background: var(--green-dim); color: var(--black); border-color: var(--green-dim); }
+
+/* Volume row */
+.pad__volume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.pad__volume-label {
+  font-size: 0.8rem;
+  color: var(--green-dim);
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+  width: 22px;
+}
+
+.pad__volume-value {
+  font-size: 0.8rem;
+  color: var(--green-dim);
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: right;
+}
+
+.pad__volume-slider {
+  flex: 1;
+  min-width: 0;
+  height: 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pad__volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--green-dark);
+  border: 1px solid var(--green-dark);
+}
+
+.pad__volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 12px;
+  background: var(--green);
+  border: none;
+  margin-top: -5px;
+  cursor: pointer;
+}
+
+.pad__volume-slider::-moz-range-track {
+  height: 4px;
+  background: var(--green-dark);
+  border: 1px solid var(--green-dark);
+}
+
+.pad__volume-slider::-moz-range-thumb {
+  width: 8px;
+  height: 12px;
+  background: var(--green);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.pad__volume-slider:focus { outline: none; }
+.pad__volume-slider:hover::-webkit-slider-thumb { background: var(--green); box-shadow: 0 0 4px var(--green); }
+
+/* Generating state */
+.pad__status-text {
+  font-size: 0.95rem;
+  color: var(--green);
+  animation: blink 1s step-end infinite;
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 6px var(--green);
 }
 
 /* Drop overlay */
 .pad__drop-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(102, 126, 234, 0.2);
-    border: 2px dashed #667eea;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: #667eea;
-    backdrop-filter: blur(4px);
-    z-index: 50;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 255, 65, 0.08);
+  border: 2px dashed var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  color: var(--green);
+  letter-spacing: 0.1em;
+  z-index: 50;
 }
 
-/* Animations */
-@keyframes padPulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.7;
-    }
+@keyframes dosLoad {
+  0%, 100% { border-color: var(--green); }
+  50%       { border-color: var(--green-dark); }
 }
 
 @keyframes blink {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.5;
-    }
-}
-
-/* Playback Progress Bar (New) */
-.pad__playback-progress {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 10;
-}
-
-.pad__playback-progress-fill {
-    height: 100%;
-    background: #667eea;
-    width: 0%;
-    box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
-    transition: width 0.1s linear;
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }

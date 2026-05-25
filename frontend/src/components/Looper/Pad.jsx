@@ -1,212 +1,169 @@
-/**
- * Pad Component - Individual pad in the looper grid
- */
-
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 import { audioContext } from '../../audio/AudioContextManager';
 import './Pad.css';
 
-function Pad({ index, pad, isGenerating, generationProgress, progress = 0, mode, onGenerate, onRecordClick }) {
-    const [prompt, setPrompt] = useState('');
-    const [isDragOver, setIsDragOver] = useState(false);
+function encodeWav(audioBuffer) {
+    const ch = audioBuffer.numberOfChannels;
+    const sr = audioBuffer.sampleRate;
+    const n  = audioBuffer.length;
+    const buf  = new ArrayBuffer(44 + n * ch * 2);
+    const view = new DataView(buf);
+    const str  = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); view.setUint32(4, 36 + n * ch * 2, true);
+    str(8, 'WAVE'); str(12, 'fmt '); view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); view.setUint16(22, ch, true);
+    view.setUint32(24, sr, true); view.setUint32(28, sr * ch * 2, true);
+    view.setUint16(32, ch * 2, true); view.setUint16(34, 16, true);
+    str(36, 'data'); view.setUint32(40, n * ch * 2, true);
+    let off = 44;
+    for (let i = 0; i < n; i++)
+        for (let c = 0; c < ch; c++) {
+            const s = Math.max(-1, Math.min(1, audioBuffer.getChannelData(c)[i]));
+            view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            off += 2;
+        }
+    return buf;
+}
+
+function savePad(pad) {
+    if (!pad.buffer) return;
+    const blob = new Blob([encodeWav(pad.buffer)], { type: 'audio/wav' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `${pad.name || 'sample'}.wav` });
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function Pad({ index, pad, isGenerating, generationStatus, onGenerate, onRecordClick }) {
+    const [prompt, setPrompt]     = useState('');
+    const [isDragOver, setDragOver] = useState(false);
     const fileInputRef = useRef(null);
+    const presetPrompt = pad.promptHistory?.prompt ?? pad.suggestedPrompt;
 
-    const { loadPad, clearPad, toggleMute, toggleSolo, startRecording } = useAudioStore();
+    useEffect(() => { if (presetPrompt) setPrompt(presetPrompt); }, [presetPrompt]);
 
-    // Handle file drop
-    const handleDrop = async (e) => {
-        e.preventDefault();
-        setIsDragOver(false);
+    const { loadPad, clearPad, toggleMute, toggleSolo, setPadVolume } = useAudioStore();
 
-        const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('audio/')) {
-            await loadAudioFile(file);
-        }
-    };
-
-    // Handle file selection
-    const handleFileSelect = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            await loadAudioFile(file);
-        }
-    };
-
-    // Load audio file into this pad
-    const loadAudioFile = async (file) => {
+    const loadFile = async (file) => {
+        if (!file?.type.startsWith('audio/')) return;
         try {
-            const ctx = audioContext.getContext();
-            const arrayBuffer = await file.arrayBuffer();
-            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-
-            loadPad(index, audioBuffer, {
-                name: file.name.replace(/\.[^/.]+$/, ''),
-                sourceType: 'upload'
-            });
-        } catch (error) {
-            console.error('Failed to load audio file:', error);
-        }
+            const ctx    = audioContext.getContext();
+            const decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+            loadPad(index, decoded, { name: file.name.replace(/\.[^/.]+$/, ''), sourceType: 'upload' });
+        } catch (e) { console.error('Failed to load audio:', e); }
     };
 
-    // Handle pad click based on mode
     const handleClick = (e) => {
         e.stopPropagation();
-
         if (isGenerating) return;
-
-        if (mode === 'generate' && pad.status === 'empty') {
-            // In-place generation
-            return;
-        }
-
-        if (mode === 'record' && pad.status === 'empty') {
-            onRecordClick?.(index);
-            return;
-        }
-
-        if (pad.status === 'ready') {
-            // Toggle mute on click anywhere on the tile
-            toggleMute(index);
-        } else if (pad.status === 'empty') {
-            fileInputRef.current?.click();
-        }
-    };
-
-    const handleKeyDown = (e) => {
-        // Ignore if user is typing in the prompt input
-        if (e.target.tagName === 'INPUT') return;
-
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleClick(e);
-        }
-    };
-
-    // Get pad status class
-    const getStatusClass = () => {
-        // User requested to remove value-based sequencer highlighting
-        // if (isActive) return 'pad--active'; 
-        if (pad.muted) return 'pad--muted';
-        if (pad.solo) return 'pad--solo';
-        if (pad.status === 'loading' || isGenerating) return 'pad--loading';
-        if (pad.status === 'ready') return 'pad--ready';
-        return 'pad--empty';
+        if (pad.status === 'ready') toggleMute(index);
+        else fileInputRef.current?.click();
     };
 
     const handleGenerate = (e) => {
         e.stopPropagation();
-        if (prompt.trim()) {
-            onGenerate(index, prompt);
-        }
+        if (prompt.trim()) onGenerate(index, prompt.trim());
     };
+
+    const hasAudio = pad.status === 'ready' && pad.buffer;
+
+    const statusClass = pad.muted ? 'pad--muted'
+        : pad.solo        ? 'pad--solo'
+        : isGenerating    ? 'pad--loading'
+        : hasAudio        ? 'pad--ready'
+        : 'pad--empty';
 
     return (
         <div
-            className={`pad ${getStatusClass()}`}
+            className={`pad ${statusClass}`}
             onClick={handleClick}
-            onKeyDown={handleKeyDown}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={handleDrop}
-            data-index={index}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); loadFile(e.dataTransfer.files[0]); }}
             tabIndex="0"
             role="button"
             aria-label={`Pad ${index + 1}: ${pad.name || 'Empty'}`}
         >
-            {/* Hidden file input */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-            />
+            <input ref={fileInputRef} type="file" accept="audio/*" style={{ display: 'none' }}
+                onChange={(e) => loadFile(e.target.files[0])} />
 
-            {/* Pad content */}
             <div className="pad__content">
                 {isGenerating ? (
-                    <div className="pad__generating">
-                        <span className="pad__status-text">Generating...</span>
-                        <div className="pad__gen-progress-bar">
-                            <div
-                                className="pad__gen-progress-fill"
-                                style={{ width: `${generationProgress}%` }}
-                            />
-                        </div>
-                    </div>
-                ) : mode === 'generate' ? (
-                    <div className="pad__generate-input" onClick={e => e.stopPropagation()}>
-                        <input
-                            type="text"
-                            placeholder="Prompt..."
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleGenerate(e)}
-                        />
-                        <button onClick={handleGenerate} disabled={!prompt.trim()}>Go</button>
-                    </div>
-                ) : pad.status === 'empty' ? (
-                    <div className="pad__placeholder">
-                        <span className="pad__index">{index + 1}</span>
-                        {mode === 'record' && <span className="pad__hint">🎤 Record</span>}
-                        {mode === 'play' && <span className="pad__hint">Drop audio</span>}
-                    </div>
+                    <span className="pad__status-text">{generationStatus || 'Generating...'}</span>
                 ) : (
                     <>
-                        <span className="pad__name">{pad.name}</span>
-                        <div className="pad__controls">
-                            <button
-                                className={`pad__btn ${!pad.muted ? 'active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); toggleMute(index); }}
-                                title={pad.muted ? "Turn On" : "Turn Off"}
-                            >
-                                {pad.muted ? 'OFF' : 'ON'}
+                        {/* Identity */}
+                        <div className="pad__identity">
+                            {hasAudio
+                                ? <span className="pad__name">{pad.name}</span>
+                                : <span className="pad__index">{index + 1}</span>
+                            }
+                            {pad.sourceType && (
+                                <span className="pad__source-badge">
+                                    {pad.sourceType === 'ai_generation' ? '✨' : pad.sourceType === 'recording' ? '🎤' : '📁'}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Playback controls — only when loaded */}
+                        {hasAudio && (
+                            <>
+                                <div className="pad__controls">
+                                    <button className={`pad__btn ${!pad.muted ? 'active' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); toggleMute(index); }}
+                                        title={pad.muted ? 'Unmute' : 'Mute'}>
+                                        {pad.muted ? 'OFF' : 'ON'}
+                                    </button>
+                                    <button className={`pad__btn ${pad.solo ? 'active' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); toggleSolo(index); }}
+                                        title="Solo">S</button>
+                                    <button className="pad__btn pad__btn--clear"
+                                        onClick={(e) => { e.stopPropagation(); clearPad(index); }}
+                                        title="Clear">×</button>
+                                </div>
+                                <div className="pad__volume" onClick={(e) => e.stopPropagation()}>
+                                    <span className="pad__volume-label">VOL</span>
+                                    <input
+                                        className="pad__volume-slider"
+                                        type="range"
+                                        min="0" max="1" step="0.01"
+                                        value={pad.volume}
+                                        onChange={(e) => setPadVolume(index, parseFloat(e.target.value))}
+                                    />
+                                    <span className="pad__volume-value">{Math.round(pad.volume * 100)}</span>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Record + Generate — always visible */}
+                        <div className="pad__actions" onClick={(e) => e.stopPropagation()}>
+                            <button className="pad__btn-rec" onClick={() => onRecordClick(index)} title="Record">
+                                🎤
                             </button>
-                            <button
-                                className={`pad__btn ${pad.solo ? 'active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); toggleSolo(index); }}
-                                title="Solo"
-                            >
-                                S
+                            <input
+                                className="pad__prompt-input"
+                                type="text"
+                                placeholder="Describe sound…"
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleGenerate(e)}
+                            />
+                            <button className="pad__btn-gen" onClick={handleGenerate} disabled={!prompt.trim()}
+                                title={hasAudio ? 'Regenerate' : 'Generate'}>
+                                {hasAudio ? '↻' : '✨'}
                             </button>
-                            <button
-                                className="pad__btn pad__btn--clear"
-                                onClick={(e) => { e.stopPropagation(); clearPad(index); }}
-                                title="Clear"
-                            >
-                                ×
-                            </button>
+                            {hasAudio && (
+                                <button className="pad__btn-save" onClick={() => savePad(pad)} title="Save WAV">
+                                    ↓
+                                </button>
+                            )}
                         </div>
                     </>
                 )}
             </div>
 
-            {/* Source type indicator */}
-            {pad.sourceType && (
-                <div className="pad__source">
-                    {pad.sourceType === 'ai_generation' && '✨'}
-                    {pad.sourceType === 'recording' && '🎤'}
-                    {pad.sourceType === 'upload' && '📁'}
-                </div>
-            )}
-
-            {/* Drag overlay */}
-            {isDragOver && (
-                <div className="pad__drop-overlay">
-                    Drop audio here
-                </div>
-            )}
-
-            {/* Progress Bar (Top of pad) */}
-            {(progress > 0 && !pad.muted) && (
-                <div className="pad__playback-progress">
-                    <div
-                        className="pad__playback-progress-fill"
-                        style={{ width: `${progress * 100}%` }}
-                    />
-                </div>
-            )}
+            {isDragOver && <div className="pad__drop-overlay">Drop audio</div>}
         </div>
     );
 }

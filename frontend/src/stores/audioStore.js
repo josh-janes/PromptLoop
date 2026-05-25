@@ -37,7 +37,8 @@ const createEmptyPad = () => ({
     muted: false,
     solo: false,
     sourceType: null,
-    promptHistory: null
+    promptHistory: null,
+    suggestedPrompt: null,
 });
 
 export const useAudioStore = create(
@@ -131,6 +132,16 @@ export const useAudioStore = create(
                 promptHistory: metadata.promptHistory || null
             };
 
+            set({ pads: newPads });
+        },
+
+        /**
+         * Set a suggested prompt on an empty pad (pre-fills the generate input without loading audio)
+         */
+        setSuggestedPrompt: (index, prompt) => {
+            const { pads } = get();
+            const newPads = [...pads];
+            newPads[index] = { ...newPads[index], suggestedPrompt: prompt };
             set({ pads: newPads });
         },
 
